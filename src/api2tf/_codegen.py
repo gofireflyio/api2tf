@@ -206,21 +206,55 @@ def _render_api_to_plan(attr: AttributeDef, indent: int = 1) -> str:
 # -- File Generation --
 
 
-def _get_id_args(resource: ResourceDef, role: CRUDRole) -> str:
-    """Get the Go arguments for passing ID to client methods."""
+def _get_id_args(resource: ResourceDef, role: CRUDRole, var_name: str = "state") -> str:
+    """Get the Go arguments for passing ID to client methods.
+
+    Maps path parameters to the actual model fields. If a path param like 'petId'
+    doesn't exist as a model attribute, falls back to the resource's id_field (usually 'id').
+    """
+    attr_names = {a.name for a in resource.attributes}
+
     if role in resource.endpoints:
         from api2tf._openapi import get_path_parameters
 
         params = get_path_parameters(resource.endpoints[role].path)
         if params:
-            # Map path params to Terraform state fields
             args = []
             for p in params:
                 tf_name = to_snake_case(p)
-                go_field = to_pascal_case(tf_name)
-                args.append(f"state.{go_field}.ValueString()")
+                if tf_name in attr_names:
+                    go_field = to_pascal_case(tf_name)
+                else:
+                    # Path param doesn't exist in model — use id_field instead
+                    go_field = to_pascal_case(to_snake_case(resource.id_field))
+                    # Check if id_field itself is a model attribute
+                    id_tf = to_snake_case(resource.id_field)
+                    if id_tf not in attr_names and "id" in attr_names:
+                        go_field = "Id"
+                args.append(f"{var_name}.{go_field}.ValueString()")
             return ", ".join(args)
-    return f"state.{to_pascal_case(resource.id_field)}.ValueString()"
+    id_tf = to_snake_case(resource.id_field)
+    if id_tf in attr_names:
+        go_field = to_pascal_case(id_tf)
+    elif "id" in attr_names:
+        go_field = "Id"
+    else:
+        go_field = to_pascal_case(resource.id_field)
+    return f"{var_name}.{go_field}.ValueString()"
+
+
+def _get_model_id_field(resource: ResourceDef) -> str:
+    """Get the Terraform attribute name used as the ID in the model.
+
+    The path param might be 'petId' but the model attribute is 'id'.
+    """
+    attr_names = {a.name for a in resource.attributes}
+    id_tf = to_snake_case(resource.id_field)
+    if id_tf in attr_names:
+        return id_tf
+    if "id" in attr_names:
+        return "id"
+    return id_tf
 
 
 def _get_id_params(resource: ResourceDef) -> str:
@@ -346,13 +380,13 @@ def _generate_resource_files(
         **base_ctx,
         type_name=type_name,
         noun=noun,
-        id_field=to_snake_case(resource.id_field),
+        id_field=_get_model_id_field(resource),
         has_create=resource.has_create,
         has_update=resource.has_update,
         has_delete=resource.has_delete,
-        read_id_args=_get_id_args(resource, CRUDRole.READ),
-        update_id_args=_get_id_args(resource, CRUDRole.UPDATE) if resource.has_update else "",
-        delete_id_args=_get_id_args(resource, CRUDRole.DELETE) if resource.has_delete else "",
+        read_id_args=_get_id_args(resource, CRUDRole.READ, "state"),
+        update_id_args=_get_id_args(resource, CRUDRole.UPDATE, "plan") if resource.has_update else "",
+        delete_id_args=_get_id_args(resource, CRUDRole.DELETE, "state") if resource.has_delete else "",
         writable_attributes=writable_attrs,
         all_attributes=resource.attributes,
     )

@@ -3,8 +3,8 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // {{ type_name }} represents the API model for {{ noun }}.
@@ -14,8 +14,8 @@ type {{ type_name }} struct {
 {% endfor %}
 }
 
-// Create{{ type_name }} creates a new {{ noun }}.
 {% if create_endpoint %}
+// Create{{ type_name }} creates a new {{ noun }}.
 func (c *Client) Create{{ type_name }}(input *{{ type_name }}) (*{{ type_name }}, error) {
 	var result {{ type_name }}
 	err := c.DoRequestJSON("{{ create_endpoint.method }}", "{{ create_endpoint.path }}", input, &result)
@@ -26,22 +26,23 @@ func (c *Client) Create{{ type_name }}(input *{{ type_name }}) (*{{ type_name }}
 }
 {% endif %}
 
-// Get{{ type_name }} retrieves a {{ noun }} by ID.
 {% if read_endpoint %}
+// Get{{ type_name }} retrieves a {{ noun }} by ID.
 func (c *Client) Get{{ type_name }}({{ id_params }}) (*{{ type_name }}, error) {
 	path := fmt.Sprintf("{{ read_endpoint.path | go_path_format }}", {{ id_args }})
-	var result {{ type_name }}
-	_, statusCode, err := c.DoRequest("{{ read_endpoint.method }}", path, nil)
+	respBody, statusCode, err := c.DoRequest("{{ read_endpoint.method }}", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get {{ noun }}: %w", err)
 	}
 	if statusCode == 404 {
 		return nil, nil
 	}
-	// Re-do with JSON parsing
-	err = c.DoRequestJSON("{{ read_endpoint.method }}", path, nil, &result)
-	if err != nil {
-		return nil, err
+	if statusCode < 200 || statusCode >= 300 {
+		return nil, fmt.Errorf("get {{ noun }} returned status %d: %s", statusCode, string(respBody))
+	}
+	var result {{ type_name }}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode {{ noun }}: %w", err)
 	}
 	return &result, nil
 }
