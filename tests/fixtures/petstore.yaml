@@ -1,0 +1,262 @@
+openapi: "3.0.3"
+info:
+  title: Petstore API
+  version: "1.0.0"
+  description: A sample API for managing pets
+servers:
+  - url: https://api.petstore.example.com/v1
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List all pets
+      responses:
+        "200":
+          description: A list of pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
+    post:
+      operationId: createPet
+      summary: Create a pet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - species
+              properties:
+                name:
+                  type: string
+                  description: The name of the pet
+                species:
+                  type: string
+                  description: The species of the pet
+                  enum:
+                    - dog
+                    - cat
+                    - bird
+                    - fish
+                age:
+                  type: integer
+                  description: The age of the pet in years
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: Tags for the pet
+      responses:
+        "201":
+          description: Pet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+  /pets/{petId}:
+    get:
+      operationId: getPet
+      summary: Get a pet by ID
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: Pet not found
+    put:
+      operationId: updatePet
+      summary: Update a pet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                species:
+                  type: string
+                  enum:
+                    - dog
+                    - cat
+                    - bird
+                    - fish
+                age:
+                  type: integer
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Pet updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+    delete:
+      operationId: deletePet
+      summary: Delete a pet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Pet deleted
+  /owners:
+    get:
+      operationId: listOwners
+      summary: List all owners
+      responses:
+        "200":
+          description: A list of owners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Owner"
+    post:
+      operationId: createOwner
+      summary: Create an owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - firstName
+                - email
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        "201":
+          description: Owner created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Owner"
+  /owners/{ownerId}:
+    get:
+      operationId: getOwner
+      summary: Get an owner by ID
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: An owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Owner"
+    delete:
+      operationId: deleteOwner
+      summary: Delete an owner
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Owner deleted
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Unique identifier
+        name:
+          type: string
+          description: The name of the pet
+        species:
+          type: string
+          description: The species of the pet
+          enum:
+            - dog
+            - cat
+            - bird
+            - fish
+        age:
+          type: integer
+          description: The age of the pet in years
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags for the pet
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Creation timestamp
+    Owner:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []

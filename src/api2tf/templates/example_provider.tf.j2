@@ -1,0 +1,13 @@
+terraform {
+  required_providers {
+    {{ provider_name }} = {
+      source = "registry.terraform.io/{{ provider_org }}/{{ provider_name }}"
+    }
+  }
+}
+
+provider "{{ provider_name }}" {
+{% for attr in auth_attributes %}
+  # {{ attr.name }} = "..." # Or set {{ attr.env_var }} env var
+{% endfor %}
+}
