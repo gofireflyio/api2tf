@@ -51,18 +51,27 @@ docker build -t ghcr.io/gofireflyio/api2tf .
 
 ## Quick Start
 
+**Recommended: AI-assisted mode (`--smart`)** for best results — uses Claude to resolve ambiguous CRUD patterns, detect computed fields, and identify sensitive attributes:
+
 ```bash
-# Inspect what api2tf detects from your spec
+# Inspect what api2tf detects (with AI analysis)
+docker run --rm -v $(pwd):/workspace -e ANTHROPIC_API_KEY ghcr.io/gofireflyio/api2tf inspect your-api-spec.yaml --smart
+
+# Generate a complete Terraform provider (with AI analysis)
+docker run --rm -v $(pwd):/workspace -e ANTHROPIC_API_KEY ghcr.io/gofireflyio/api2tf generate your-api-spec.yaml --smart
+```
+
+Without an Anthropic API key, api2tf falls back to heuristic-only mode:
+
+```bash
+# Inspect using heuristics only
 docker run --rm -v $(pwd):/workspace ghcr.io/gofireflyio/api2tf inspect your-api-spec.yaml
 
-# Generate a complete Terraform provider
+# Generate using heuristics only
 docker run --rm -v $(pwd):/workspace ghcr.io/gofireflyio/api2tf generate your-api-spec.yaml
 
-# Generate with a custom provider name and output directory
+# Custom provider name and output directory
 docker run --rm -v $(pwd):/workspace ghcr.io/gofireflyio/api2tf generate your-api-spec.yaml --provider-name myapi -o ./output/
-
-# Use AI-assisted analysis
-docker run --rm -v $(pwd):/workspace -e ANTHROPIC_API_KEY ghcr.io/gofireflyio/api2tf generate your-api-spec.yaml --smart
 ```
 
 ### Example: Petstore API
@@ -230,10 +239,10 @@ After generating your provider, you can use it locally for development and testi
 ### Step 1: Compile the Provider
 
 ```bash
-# Option A: Validate with api2tf (uses Docker under the hood)
-docker run --rm -v $(pwd):/workspace ghcr.io/gofireflyio/api2tf validate ./terraform-provider-myapi/
+# Using Docker (no local Go required)
+docker run --rm -v $(pwd)/terraform-provider-myapi:/app -w /app golang:1.22 sh -c "go mod tidy && go build -o terraform-provider-myapi ./..."
 
-# Option B: Build locally (requires Go 1.22+)
+# Or locally (requires Go 1.22+)
 cd terraform-provider-myapi
 go mod tidy
 go build -o terraform-provider-myapi
@@ -561,7 +570,6 @@ ignore_paths:
 | `api2tf diff <old> <new>` | Compare two spec versions and show changes |
 | `api2tf init <spec>` | Generate + run `go mod tidy` in one step |
 | `api2tf update <spec> <dir>` | Incrementally update a provider from a new spec |
-| `api2tf validate <dir>` | Compile generated Go code to check for errors |
 
 ### Common Flags
 
