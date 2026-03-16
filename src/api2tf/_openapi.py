@@ -49,39 +49,68 @@ def load_spec(source: str) -> dict:
     is_url = source.startswith("http://") or source.startswith("https://")
 
     if is_url:
-        import httpx
+        try:
+            import httpx
+        except ImportError:
+            print("Error: 'httpx' is required to fetch remote specs. Install with: pip install httpx", file=sys.stderr)
+            sys.exit(1)
 
-        with httpx.Client(timeout=30) as client:
-            resp = client.get(source)
-            resp.raise_for_status()
-            raw = resp.text
+        try:
+            with httpx.Client(timeout=30) as client:
+                resp = client.get(source)
+                resp.raise_for_status()
+                raw = resp.text
+        except Exception as e:
+            print(f"Error: failed to fetch spec from {source}: {e}", file=sys.stderr)
+            sys.exit(1)
     else:
         path = Path(source)
         if not path.exists():
             print(f"Error: spec file not found: {source}", file=sys.stderr)
             sys.exit(1)
-        raw = path.read_text()
+        if path.stat().st_size == 0:
+            print(f"Error: spec file is empty: {source}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            raw = path.read_text()
+        except Exception as e:
+            print(f"Error: could not read spec file: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Parse JSON or YAML
     try:
         spec = json.loads(raw)
     except json.JSONDecodeError:
-        import yaml
-
-        spec = yaml.safe_load(raw)
+        try:
+            import yaml
+            spec = yaml.safe_load(raw)
+        except Exception as e:
+            print(f"Error: spec is not valid JSON or YAML: {e}", file=sys.stderr)
+            sys.exit(1)
 
     if not isinstance(spec, dict):
-        print("Error: spec must be a JSON/YAML object", file=sys.stderr)
+        print("Error: spec must be a JSON/YAML object (got %s)" % type(spec).__name__, file=sys.stderr)
         sys.exit(1)
 
     # Validate minimum structure
     if "paths" not in spec:
-        print("Error: spec must contain 'paths'", file=sys.stderr)
+        # Check if it looks like a Swagger 2.0 spec
+        if "swagger" in spec:
+            print("Error: Swagger 2.0 specs are not supported. Convert to OpenAPI 3.x first.", file=sys.stderr)
+            print("  Tip: Use https://converter.swagger.io/ or 'swagger2openapi' to convert.", file=sys.stderr)
+        else:
+            print("Error: spec must contain 'paths'. Is this a valid OpenAPI spec?", file=sys.stderr)
         sys.exit(1)
 
-    openapi_version = spec.get("openapi", "")
+    if not spec["paths"]:
+        print("Error: spec has an empty 'paths' object — no endpoints to generate from.", file=sys.stderr)
+        sys.exit(1)
+
+    openapi_version = spec.get("openapi") or ""
+    if isinstance(openapi_version, (int, float)):
+        openapi_version = str(openapi_version)
     if not openapi_version.startswith("3."):
-        logger.warning("Expected OpenAPI 3.x, got: %s", openapi_version)
+        logger.warning("Expected OpenAPI 3.x, got: %s", openapi_version or "null")
 
     return resolve_refs(spec)
 

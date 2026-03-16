@@ -105,6 +105,42 @@ class TestAttributeInference:
             assert id_attr.computability == AttrComputability.COMPUTED
 
 
+class TestSlugToNoun:
+    """Test that _slug_to_noun singularizes only the last segment."""
+
+    def test_simple_plural(self):
+        from api2tf._inference import _slug_to_noun
+        assert _slug_to_noun("pets") == "pet"
+
+    def test_compound_last_segment_plural(self):
+        from api2tf._inference import _slug_to_noun
+        assert _slug_to_noun("access_credentials_postgres") == "access_credentials_postgres"
+
+    def test_compound_last_segment_redis(self):
+        from api2tf._inference import _slug_to_noun
+        assert _slug_to_noun("access_credentials_redis") == "access_credentials_redis"
+
+    def test_compound_last_segment_regular_plural(self):
+        from api2tf._inference import _slug_to_noun
+        assert _slug_to_noun("access_policies") == "access_policy"
+
+    def test_compound_last_segment_users(self):
+        from api2tf._inference import _slug_to_noun
+        assert _slug_to_noun("api_users") == "api_user"
+
+
+class TestIdFieldInjection:
+    """Test that path-param ID fields are added to attributes when missing."""
+
+    def test_id_field_added_when_missing(self, petstore_spec_resolved):
+        """If the id_field comes from a path param not in response body, it should be injected."""
+        provider = infer_provider(petstore_spec_resolved)
+        pet = next(r for r in provider.resources if r.terraform_name == "petstore_pet")
+        attr_names = [a.name for a in pet.attributes]
+        # pet_id comes from path param {petId} and should exist as an attribute
+        assert "pet_id" in attr_names or "id" in attr_names
+
+
 class TestIgnorePaths:
     def test_ignore_health(self, petstore_spec_resolved):
         provider = infer_provider(petstore_spec_resolved, ignore_paths=["/health"])

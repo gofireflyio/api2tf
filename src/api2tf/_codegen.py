@@ -45,10 +45,93 @@ def _create_jinja_env() -> Environment:
     env.filters["render_datasource_attribute"] = _render_datasource_attribute
     env.filters["render_plan_to_api"] = _render_plan_to_api
     env.filters["render_api_to_plan"] = _render_api_to_plan
+    env.filters["example_value"] = _example_value
     return env
 
 
 # -- Jinja2 Filters --
+
+
+def _example_value(attr: AttributeDef) -> str:
+    """Generate a realistic HCL example value for an attribute."""
+    # Enum values: use the first one
+    if attr.enum_values:
+        return f'"{attr.enum_values[0]}"'
+
+    tf = attr.tf_type
+
+    if tf == TFType.BOOL:
+        return "true"
+
+    if tf in (TFType.INT64, TFType.FLOAT64):
+        # Try to derive a sensible number from the name
+        name = attr.name
+        if "port" in name:
+            return "8080"
+        if "timeout" in name or "interval" in name or "duration" in name:
+            return "30"
+        if "count" in name or "size" in name or "limit" in name:
+            return "10"
+        if "age" in name:
+            return "3"
+        return "1"
+
+    if tf in (TFType.LIST, TFType.SET):
+        if attr.element_type == TFType.STRING:
+            return '["example"]'
+        if attr.element_type == TFType.INT64:
+            return "[1]"
+        if attr.element_type == TFType.BOOL:
+            return "[true]"
+        return '["example"]'
+
+    if tf in (TFType.MAP, TFType.MAP_NESTED):
+        return '{ example_key = "example_value" }'
+
+    if tf == TFType.SINGLE_NESTED:
+        return "{ }"
+
+    if tf == TFType.LIST_NESTED:
+        return "[{ }]"
+
+    # Default: string — derive from attribute name
+    name = attr.name
+    _name_hints = {
+        "name": '"my-resource-name"',
+        "display_name": '"My Display Name"',
+        "description": '"Example description"',
+        "email": '"user@example.com"',
+        "url": '"https://example.com"',
+        "region": '"us-east-1"',
+        "environment": '"production"',
+        "type": '"default"',
+        "status": '"active"',
+        "format": '"json"',
+        "protocol": '"https"',
+        "host": '"example.com"',
+        "path": '"/api/v1"',
+        "version": '"1.0.0"',
+        "label": '"example-label"',
+        "key": '"example-key"',
+        "value": '"example-value"',
+    }
+    for hint_name, hint_val in _name_hints.items():
+        if name == hint_name or name.endswith(f"_{hint_name}"):
+            return hint_val
+
+    if "id" in name and name != "id":
+        return '"example-id"'
+
+    if attr.format_hint == "date-time":
+        return '"2024-01-01T00:00:00Z"'
+    if attr.format_hint == "uuid":
+        return '"550e8400-e29b-41d4-a716-446655440000"'
+    if attr.format_hint == "email":
+        return '"user@example.com"'
+    if attr.format_hint == "uri" or attr.format_hint == "url":
+        return '"https://example.com"'
+
+    return f'"example-{name.replace("_", "-")}"'
 
 
 def _escape_go_string(value: str) -> str:
@@ -343,6 +426,31 @@ def generate_files(
         auth_attributes=provider.auth_schemes,
     )
 
+    # Example resource .tf files
+    tmpl = env.get_template("example_resource.tf.j2")
+    for resource in provider.resources:
+        example_path = f"examples/resources/{resource.terraform_name}/resource.tf"
+        files[example_path] = tmpl.render(
+            provider_name=provider.name,
+            resource=resource,
+        )
+
+    # Example data source .tf files
+    tmpl = env.get_template("example_data_source.tf.j2")
+    for ds in provider.data_sources:
+        example_path = f"examples/data-sources/{ds.terraform_name}/data-source.tf"
+        files[example_path] = tmpl.render(
+            provider_name=provider.name,
+            ds=ds,
+        )
+
+    # Provider acceptance test helper
+    tmpl = env.get_template("provider_acc_test.go.j2")
+    files["internal/provider/provider_acc_test.go"] = tmpl.render(
+        **base_ctx,
+        auth_schemes=provider.auth_schemes,
+    )
+
     return files
 
 
@@ -363,13 +471,14 @@ def _generate_resource_files(
         if a.computability != AttrComputability.COMPUTED
     ]
 
-    # Schema gen
+    # Schema gen — exclude write-only fields from the model/schema
+    schema_attrs = [a for a in resource.attributes if not a.write_only]
     tmpl = env.get_template("resource_schema_gen.go.j2")
     files[f"internal/provider/resource_{noun}_schema_gen.go"] = tmpl.render(
         **base_ctx,
         type_name=type_name,
         noun=noun,
-        attributes=resource.attributes,
+        attributes=schema_attrs,
         description=resource.description,
         has_validators=has_validators,
     )
@@ -387,14 +496,23 @@ def _generate_resource_files(
         read_id_args=_get_id_args(resource, CRUDRole.READ, "state"),
         update_id_args=_get_id_args(resource, CRUDRole.UPDATE, "plan") if resource.has_update else "",
         delete_id_args=_get_id_args(resource, CRUDRole.DELETE, "state") if resource.has_delete else "",
-        writable_attributes=writable_attrs,
-        all_attributes=resource.attributes,
+        writable_attributes=[a for a in writable_attrs if not a.write_only],
+        all_attributes=schema_attrs,
     )
 
     # Override (scaffold)
     tmpl = env.get_template("resource_override.go.j2")
     files[f"internal/provider/resource_{noun}_override.go"] = tmpl.render(
         type_name=type_name,
+    )
+
+    # Acceptance test
+    tmpl = env.get_template("resource_acc_test.go.j2")
+    files[f"internal/provider/resource_{noun}_acc_test.go"] = tmpl.render(
+        **base_ctx,
+        type_name=type_name,
+        noun=noun,
+        writable_attributes=[a for a in writable_attrs if not a.write_only],
     )
 
 

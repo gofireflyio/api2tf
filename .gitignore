@@ -15,3 +15,7 @@ venv/
 *.swp
 *.swo
 .DS_Store
+tmp-*/
+terraform-provider-*/
+api2tf.override.yaml
+.api2tf.state.json

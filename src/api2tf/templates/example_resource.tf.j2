@@ -1,0 +1,17 @@
+resource "{{ resource.terraform_name }}" "example" {
+{% for attr in resource.attributes %}
+{% if attr.computability.value == "computed" %}
+  # {{ attr.name }} is computed by the server
+{% elif attr.sensitive %}
+{% if attr.computability.value == "required" %}
+  {{ attr.name }} = "REPLACE_ME" # sensitive
+{% else %}
+  # {{ attr.name }} = "REPLACE_ME" # sensitive, optional
+{% endif %}
+{% elif attr.computability.value == "required" %}
+  {{ attr.name }} = {{ attr | example_value }}
+{% elif attr.computability.value == "optional" or attr.computability.value == "computed_optional" %}
+  # {{ attr.name }} = {{ attr | example_value }} # optional
+{% endif %}
+{% endfor %}
+}

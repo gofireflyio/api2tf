@@ -23,6 +23,15 @@ from api2tf._helpers import (
     provider_name_from_title,
     env_var_name,
 )
+
+
+def _slug_to_noun(stem: str) -> str:
+    """Singularize only the last segment of a snake_case slug."""
+    snake = to_snake_case(stem)
+    parts = snake.rsplit("_", 1)
+    if len(parts) == 2:
+        return parts[0] + "_" + singularize(parts[1])
+    return singularize(snake)
 from api2tf._openapi import (
     get_paths,
     get_spec_info,
@@ -120,7 +129,7 @@ def _build_resource(
     roles: dict[CRUDRole, tuple[str, str, dict]],
 ) -> ResourceDef:
     """Build a ResourceDef from CRUD roles."""
-    noun = singularize(to_snake_case(stem))
+    noun = _slug_to_noun(stem)
     tf_name = terraform_resource_name(provider_name, noun)
     id_field = _detect_id_field(roles)
 
@@ -153,6 +162,28 @@ def _build_resource(
             response_attrs = map_schema_to_attributes(resp_schema, read_only=True)
 
     attributes = merge_attributes(request_attrs, response_attrs)
+
+    # Ensure the id_field is present as an attribute (may come from path params)
+    attr_names = {a.name for a in attributes}
+    id_tf = to_snake_case(id_field)
+    if id_tf and id_tf not in attr_names and id_tf != "id":
+        from api2tf._types import AttributeDef, TFType, AttrComputability
+        attributes.insert(0, AttributeDef(
+            name=id_tf,
+            tf_type=TFType.STRING,
+            computability=AttrComputability.COMPUTED,
+            sensitive=False,
+            description=f"ID parameter ({id_field})",
+        ))
+    elif id_tf and id_tf not in attr_names and id_tf == "id":
+        from api2tf._types import AttributeDef, TFType, AttrComputability
+        attributes.insert(0, AttributeDef(
+            name="id",
+            tf_type=TFType.STRING,
+            computability=AttrComputability.COMPUTED,
+            sensitive=False,
+            description="Resource identifier",
+        ))
 
     # Confidence score
     confidence = sum(
@@ -188,7 +219,7 @@ def _build_data_source(
     elif CRUDRole.READ in roles and CRUDRole.CREATE not in roles:
         # Read-only endpoint -> data source
         path, method, operation = roles[CRUDRole.READ]
-        noun = singularize(to_snake_case(stem))
+        noun = _slug_to_noun(stem)
         tf_name = terraform_datasource_name(provider_name, noun)
     else:
         return None
@@ -286,7 +317,14 @@ def _infer_auth_schemes(
                     ))
                     break
 
-    return auth_defs
+    # Deduplicate by tf_attr_name (first wins)
+    seen: set[str] = set()
+    unique: list[AuthSchemeDef] = []
+    for a in auth_defs:
+        if a.tf_attr_name not in seen:
+            seen.add(a.tf_attr_name)
+            unique.append(a)
+    return unique
 
 
 def infer_provider(
@@ -313,6 +351,7 @@ def infer_provider(
     ignore = set(ignore_paths or [])
     resources: list[ResourceDef] = []
     data_sources: list[DataSourceDef] = []
+    low_confidence: list[str] = []
 
     for stem, entries in groups.items():
         # Check ignore patterns
@@ -330,16 +369,21 @@ def infer_provider(
             resource = _build_resource(name, stem, roles)
             resources.append(resource)
             if resource.confidence < 3:
-                logger.warning(
-                    "Resource '%s' has low confidence (score=%d) -- missing some CRUD operations",
-                    resource.terraform_name,
-                    resource.confidence,
-                )
+                low_confidence.append(resource.terraform_name)
 
         # Build data source if list endpoint exists
         ds = _build_data_source(name, stem, roles)
         if ds:
             data_sources.append(ds)
+
+    if low_confidence:
+        logger.warning(
+            "%d resource(s) have partial CRUD (missing delete or update). "
+            "Use --verbose to list them.",
+            len(low_confidence),
+        )
+        for name_lc in low_confidence:
+            logger.debug("  Low confidence: %s", name_lc)
 
     # Infer auth
     security_schemes = get_security_schemes(spec)

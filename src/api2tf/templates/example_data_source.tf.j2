@@ -1,0 +1,24 @@
+data "{{ ds.terraform_name }}" "example" {
+{% for attr in ds.attributes %}
+{% if attr.computability.value != "computed" %}
+{% if attr.sensitive %}
+  # {{ attr.name }} = "REPLACE_ME" # sensitive
+{% else %}
+  # {{ attr.name }} = {{ attr | example_value }}
+{% endif %}
+{% endif %}
+{% endfor %}
+}
+{% set computed_attrs = [] %}
+{% for attr in ds.attributes %}
+{% if attr.computability.value == "computed" %}
+{% if computed_attrs.append(attr) %}{% endif %}
+{% endif %}
+{% endfor %}
+{% if computed_attrs %}
+
+# Access computed attributes:
+{% for attr in computed_attrs %}
+# data.{{ ds.terraform_name }}.example.{{ attr.name }}
+{% endfor %}
+{% endif %}

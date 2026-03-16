@@ -77,6 +77,9 @@ func (p *{{ provider_type }}Provider) Configure(ctx context.Context, req provide
 	c.SetHeader("{{ attr.param_name }}", {{ attr.name }})
 {% elif attr.scheme_type == "apiKey" and attr.param_location == "query" %}
 	c.SetQueryParam("{{ attr.param_name }}", {{ attr.name }})
+{% else %}
+	// TODO: Configure {{ attr.scheme_type }} auth for {{ attr.name }}
+	_ = {{ attr.name }}
 {% endif %}
 {% endfor %}
 

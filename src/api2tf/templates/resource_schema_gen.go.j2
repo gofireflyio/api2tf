@@ -10,7 +10,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 {% endif %}
+{% if attributes %}
 	"github.com/hashicorp/terraform-plugin-framework/types"
+{% endif %}
 )
 
 // {{ type_name }}Model describes the resource data model.

@@ -14,13 +14,19 @@ def to_snake_case(name: str) -> str:
     'https_connection'
     >>> to_snake_case("my-resource-name")
     'my_resource_name'
+    >>> to_snake_case("jwks.json")
+    'jwks_json'
+    >>> to_snake_case(".well-known")
+    'well_known'
     """
-    # Replace hyphens with underscores
-    name = name.replace("-", "_")
+    # Replace dots and hyphens with underscores
+    name = re.sub(r"[.\-]", "_", name)
     # Insert underscore before uppercase letters that follow lowercase
     name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
     # Insert underscore between consecutive uppercase + lowercase (e.g. HTTPSConn -> HTTPS_Conn)
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    # Collapse multiple underscores and strip leading/trailing underscores
+    name = re.sub(r"_+", "_", name).strip("_")
     return name.lower()
 
 
@@ -31,8 +37,12 @@ def to_pascal_case(name: str) -> str:
     'PetStore'
     >>> to_pascal_case("my-resource")
     'MyResource'
+    >>> to_pascal_case("jwks.json")
+    'JwksJson'
+    >>> to_pascal_case(".well_known")
+    'WellKnown'
     """
-    return "".join(word.capitalize() for word in re.split(r"[_\-]+", name) if word)
+    return "".join(word.capitalize() for word in re.split(r"[_\-\.]+", name) if word)
 
 
 def to_camel_case(name: str) -> str:
@@ -115,13 +125,26 @@ def path_to_slug(path: str) -> str:
 
     >>> path_to_slug("/pets/{petId}/vaccinations")
     'pets_vaccinations'
+    >>> path_to_slug("/.well-known/jwks.json")
+    'well_known_jwks_json'
     """
-    # Remove path params and leading slash
+    # Remove path params, leading slash, and version prefixes
+    _VERSION_PREFIX = re.compile(r"^v\d+$", re.IGNORECASE)
+    _API_PREFIX = re.compile(r"^api$", re.IGNORECASE)
     parts = []
     for segment in path.strip("/").split("/"):
-        if not segment.startswith("{"):
-            parts.append(segment)
-    return "_".join(parts)
+        if segment.startswith("{"):
+            continue
+        if _VERSION_PREFIX.match(segment) or _API_PREFIX.match(segment):
+            continue
+        # Replace dots and hyphens with underscores, strip leading dots/underscores
+        sanitized = re.sub(r"[.\-]", "_", segment).strip("_")
+        if sanitized:
+            parts.append(sanitized)
+    slug = "_".join(parts)
+    # Collapse multiple underscores
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug
 
 
 def singularize(word: str) -> str:
@@ -137,6 +160,15 @@ def singularize(word: str) -> str:
     'status'
     """
     if not word:
+        return word
+    # Words ending in 's' that are already singular — do not strip
+    _SINGULAR_EXCEPTIONS = {
+        "postgres", "redis", "atlas", "kubernetes", "canvas", "prometheus",
+        "jenkins", "travis", "dns", "sms", "https", "cls", "bus", "gas",
+        "alias", "basis", "series", "species", "means", "credentials",
+        "elasticsearch", "access", "process", "address", "express",
+    }
+    if word.lower() in _SINGULAR_EXCEPTIONS:
         return word
     if word.endswith("ies") and len(word) > 3:
         return word[:-3] + "y"

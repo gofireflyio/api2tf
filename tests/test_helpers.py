@@ -63,6 +63,28 @@ class TestSingularize:
     def test_empty(self):
         assert singularize("") == ""
 
+    # Singular exceptions — words ending in 's' that should NOT be stripped
+    def test_postgres_not_stripped(self):
+        assert singularize("postgres") == "postgres"
+
+    def test_redis_not_stripped(self):
+        assert singularize("redis") == "redis"
+
+    def test_kubernetes_not_stripped(self):
+        assert singularize("kubernetes") == "kubernetes"
+
+    def test_elasticsearch_not_stripped(self):
+        assert singularize("elasticsearch") == "elasticsearch"
+
+    def test_credentials_not_stripped(self):
+        assert singularize("credentials") == "credentials"
+
+    def test_prometheus_not_stripped(self):
+        assert singularize("prometheus") == "prometheus"
+
+    def test_access_not_stripped(self):
+        assert singularize("access") == "access"
+
 
 class TestPluralize:
     def test_regular(self):
@@ -112,6 +134,25 @@ class TestPathToSlug:
 
     def test_nested(self):
         assert path_to_slug("/pets/{petId}/vaccinations") == "pets_vaccinations"
+
+    # Version prefix stripping
+    def test_strips_v1_prefix(self):
+        assert path_to_slug("/v1/users") == "users"
+
+    def test_strips_v2_prefix(self):
+        assert path_to_slug("/v2/access_policies") == "access_policies"
+
+    def test_strips_api_prefix(self):
+        assert path_to_slug("/api/users") == "users"
+
+    def test_strips_both_api_and_version(self):
+        assert path_to_slug("/api/v1/resources") == "resources"
+
+    def test_preserves_non_version_segments(self):
+        assert path_to_slug("/v1/access_credentials/{id}/postgres") == "access_credentials_postgres"
+
+    def test_no_prefix_unchanged(self):
+        assert path_to_slug("/users/{userId}") == "users"
 
 
 class TestTerraformResourceName:

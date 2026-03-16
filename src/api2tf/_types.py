@@ -75,7 +75,14 @@ class AttributeDef:
     @property
     def go_type(self) -> str:
         """Terraform Plugin Framework Go type (e.g. types.String)."""
-        return f"types.{self.tf_type.value}"
+        # Nested types map to types.Object or types.List in the TF SDK
+        _go_type_map = {
+            TFType.SINGLE_NESTED: "types.Object",
+            TFType.LIST_NESTED: "types.List",
+            TFType.MAP_NESTED: "types.Map",
+            TFType.SET_NESTED: "types.Set",
+        }
+        return _go_type_map.get(self.tf_type, f"types.{self.tf_type.value}")
 
 
 @dataclass
