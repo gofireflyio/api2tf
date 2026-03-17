@@ -74,6 +74,7 @@ def _build_parser() -> argparse.ArgumentParser:
     upd.add_argument("--no-config", action="store_true", help="Ignore override config")
     upd.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
     upd.add_argument("--force", action="store_true", help="Overwrite override files")
+    upd.add_argument("--smart", action="store_true", help="Use LLM (Claude) to analyze spec before updating")
     upd.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
 
     # validate
@@ -101,7 +102,8 @@ def _cmd_generate(args: argparse.Namespace) -> None:
         analysis = analyze_spec(spec)
         if analysis:
             config_file = args.config if not args.no_config else "api2tf.override.yaml"
-            merge_analysis_into_config(analysis, config_file)
+            if not args.dry_run:
+                merge_analysis_into_config(analysis, config_file)
             args.no_config = False
             args.config = config_file
 
@@ -374,15 +376,20 @@ def _cmd_update(args: argparse.Namespace) -> None:
     from api2tf._inference import infer_provider
     from api2tf._config import load_config, apply_overrides
     from api2tf._codegen import generate_files, write_files
-    from api2tf._diffing import load_state, compute_spec_hash, plan_generation, format_plan
+    from api2tf._diffing import load_state, infer_state_from_directory, compute_spec_hash, plan_generation, format_plan
 
     provider_dir = Path(args.provider_dir)
     if not provider_dir.exists():
         print(f"Error: Directory '{provider_dir}' does not exist.", file=sys.stderr)
         sys.exit(1)
 
-    # Load previous state
+    # Load previous state, or infer from existing files
     state = load_state(provider_dir)
+    inferred = False
+    if state is None:
+        state = infer_state_from_directory(provider_dir)
+        if state:
+            inferred = True
 
     # Load new spec
     new_spec = load_spec(args.new_spec)
@@ -392,6 +399,17 @@ def _cmd_update(args: argparse.Namespace) -> None:
     if state and state.spec_hash == new_hash:
         print("Spec has not changed since last generation. Nothing to update.")
         return
+
+    # LLM analysis (optional)
+    if getattr(args, "smart", False):
+        from api2tf._llm import analyze_spec, merge_analysis_into_config
+        analysis = analyze_spec(new_spec)
+        if analysis:
+            config_file = args.config if not args.no_config else "api2tf.override.yaml"
+            if not args.dry_run:
+                merge_analysis_into_config(analysis, config_file)
+            args.no_config = False
+            args.config = config_file
 
     # Load config
     config_path = None if args.no_config else args.config
@@ -458,8 +476,11 @@ def _cmd_update(args: argparse.Namespace) -> None:
         if not added_r and not removed_r and not added_ds and not removed_ds and not changed:
             print("  No structural changes (attributes may have changed).")
         print()
+    elif inferred:
+        print(f"No .api2tf.state.json found — inferred {len(state.resources)} existing resource(s) "
+              f"and {len(state.data_sources)} data source(s) from directory.\n")
     else:
-        print("No previous state found — performing full generation.\n")
+        print("No existing provider files found — performing full generation.\n")
 
     # Generate files
     file_contents = generate_files(new_provider, new_spec)
