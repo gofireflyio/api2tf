@@ -30,7 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 smart = [
-    "anthropic>=0.40.0",
+    "anthropic>=0.94.1",
 ]
 test = [
     "pytest>=8.0",
